@@ -26,7 +26,7 @@ Keep an independent private backup of the signing key and password. Losing the k
 
 ## Local build
 
-Requires PowerShell 7, Java 17, ripgrep, and Android SDK build-tools 35.0.0. Set the signing-password environment variables, then run:
+Requires PowerShell 7, Java 17, and Android SDK build-tools 35.0.0. Ripgrep is used when available; a built-in search works otherwise. Set the signing-password environment variables, then run:
 
 ```powershell
 ./tests/Test-Patches.ps1

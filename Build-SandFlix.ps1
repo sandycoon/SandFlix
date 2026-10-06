@@ -54,7 +54,7 @@ foreach ($tool in 'aapt2.exe','zipalign.exe','apksigner.bat') {
 }
 $java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java' }
 Get-Command $java -ErrorAction Stop | Out-Null
-Get-Command rg -ErrorAction Stop | Out-Null
+$hasRipgrep = $null -ne (Get-Command rg -ErrorAction SilentlyContinue)
 if ($ReleaseRepository -eq 'NuvioMedia/NuvioTV') { throw 'A custom release repository is required.' }
 
 $headers = @{ 'User-Agent' = 'SandFlix-build'; 'Accept' = 'application/vnd.github+json' }
@@ -91,13 +91,22 @@ $decoded = Join-Path $scratch 'decoded'
 Run-Native $java @('-jar', $ApktoolPath, 'd', '-o', $decoded, $upstream)
 $manifestPath = Join-Path $decoded 'AndroidManifest.xml'
 [IO.File]::WriteAllText($manifestPath, (Convert-SandFlixManifest ([IO.File]::ReadAllText($manifestPath))), [Text.UTF8Encoding]::new($false))
-$updaterPaths = @(& rg -l --fixed-strings 'Empty GitHub release response' $decoded -g '*.smali')
-if ($LASTEXITCODE -ne 0 -or $updaterPaths.Count -ne 1) { throw 'Update repository could not be identified uniquely. Review required.' }
+if ($hasRipgrep) {
+    $updaterPaths = @(& rg -l --fixed-strings 'Empty GitHub release response' $decoded -g '*.smali')
+} else {
+    $smaliFiles = @(Get-ChildItem $decoded -Recurse -File -Filter '*.smali')
+    $updaterPaths = @(Select-String -Path $smaliFiles.FullName -SimpleMatch -Pattern 'Empty GitHub release response' -List | ForEach-Object { $_.Path })
+}
+if ($updaterPaths.Count -ne 1) { throw 'Update repository could not be identified uniquely. Review required.' }
 $updaterText = Convert-SandFlixUpdateRepository ([IO.File]::ReadAllText($updaterPaths[0])) $ReleaseRepository
 [IO.File]::WriteAllText($updaterPaths[0], $updaterText, [Text.UTF8Encoding]::new($false))
 # Official updater stays enabled; only its release repository is redirected.
-$updaterViewModels = @(& rg -l --fixed-strings 'UpdateViewModel.kt' $decoded -g '*.smali')
-if ($LASTEXITCODE -ne 0 -or $updaterViewModels.Count -ne 1) { throw 'Updater structure changed. Review required.' }
+if ($hasRipgrep) {
+    $updaterViewModels = @(& rg -l --fixed-strings 'UpdateViewModel.kt' $decoded -g '*.smali')
+} else {
+    $updaterViewModels = @(Select-String -Path $smaliFiles.FullName -SimpleMatch -Pattern 'UpdateViewModel.kt' -List | ForEach-Object { $_.Path })
+}
+if ($updaterViewModels.Count -ne 1) { throw 'Updater structure changed. Review required.' }
 if ([IO.File]::ReadAllText($updaterViewModels[0]) -notmatch 'launch\$default') { throw 'Updater unexpectedly disabled.' }
 
 $brandingRoot = Join-Path $PSScriptRoot 'branding'
